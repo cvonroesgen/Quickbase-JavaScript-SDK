@@ -1,0 +1,987 @@
+function QuickBaseClient( qdbServer )
+{
+    if ( qdbServer )
+    {
+        this.qdbServer = qdbServer;
+    }
+    else
+    {
+        this.qdbServer = "";
+    }
+
+    this.username = "";
+    this.password = "";
+    this.ticket = "";
+    this.errorcode = "";
+    this.errortext = "";
+    this.errordetail = "";
+    this.errormessage = "";
+    this.apptoken = "";
+
+    document.location.href.match( /\/db\/([^\?]+)\?/ );
+    this.dbid = RegExp.$1;
+
+    this.Authenticate = function ( username, password )
+    {
+        this.username = username;
+        this.password = password;
+        this.ticket = "";
+    }
+
+    this.GetTicket = function ()
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( "main", "API_Authenticate", xmlQDBRequest );
+        return xmlQDBResponse.find("ticket").text();
+    }
+
+    this.SetAppToken = function ( apptoken )
+    {
+        this.apptoken = apptoken;
+    }
+
+    this.GetSchema = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        return this.APIXMLPost( dbid, "API_GetSchema", xmlQDBRequest );
+    }
+
+    this.GetDBInfo = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        return this.APIXMLPost( dbid, "API_GetDBInfo", xmlQDBRequest );
+    }
+
+    this.CloneDatabase = function ( dbid, newdbname, newdbdesc )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "newdbname", newdbname );
+        this.addParameter( xmlQDBRequest, "newdbdesc", newdbdesc );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_CloneDatabase", xmlQDBRequest );
+        return xmlQDBResponse.find("newdbid").text();
+    }
+
+
+    this.AddField = function ( dbid, label, type, mode )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "label", label );
+        this.addParameter( xmlQDBRequest, "type", type );
+        if ( mode != "" )
+        {
+            this.addParameter( xmlQDBRequest, "mode", mode );
+        }
+        var xmlQDBResponse = this.APIXMLPost( dbid, "API_AddField", xmlQDBRequest );
+        return xmlQDBResponse.find("fid").text();
+        
+    }
+
+    this.DeleteField = function ( dbid, fid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "fid", fid );
+        return this.APIXMLPost( dbid, "API_DeleteField", xmlQDBRequest );
+    }
+
+    this.FieldAddChoices = function ( dbid, fid, choiceArray )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "fid", fid );
+        for ( var choiceCounter = 0; choiceCounter < choiceArray.length; choiceCounter++ )
+        {
+            this.addParameter( xmlQDBRequest, "choice", choiceArray[choiceCounter] );
+        }
+        var xmlQDBResponse = this.APIXMLPost( dbid, "API_FieldAddChoices", xmlQDBRequest );
+        return xmlQDBResponse.find("numadded").text();
+        
+    }
+
+    this.FieldRemoveChoices = function ( dbid, fid, choiceArray )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "fid", fid );
+        for ( var choiceCounter = 0; choiceCounter < choiceArray.length; choiceCounter++ )
+        {
+            this.addParameter( xmlQDBRequest, "choice", choiceArray[choiceCounter] );
+        }
+        var xmlQDBResponse = this.APIXMLPost( dbid, "API_FieldRemoveChoices", xmlQDBRequest );
+        return xmlQDBResponse.find("numremoved").text();
+    }
+
+    this.SetFieldProperties = function ( dbid, fid, propertyName, value )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "fid", fid );
+        this.addParameter( xmlQDBRequest, propertyName, value );
+        return this.APIXMLPost( dbid, "API_SetFieldProperties", xmlQDBRequest );
+    }
+
+    this.GrantedDBs = function ( withembeddedtables, Excludeparents, adminOnly )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        if ( withembeddedtables != undefined )
+        {
+            this.addParameter( xmlQDBRequest, "withembeddedtables", withembeddedtables );
+        }
+        if ( Excludeparents != undefined )
+        {
+            this.addParameter( xmlQDBRequest, "Excludeparents", Excludeparents );
+        }
+        if ( adminOnly != undefined )
+        {
+            this.addParameter( xmlQDBRequest, "adminOnly", adminOnly );
+        }
+        return this.APIXMLPost( "main", "API_GrantedDBs", xmlQDBRequest );
+    }
+
+    this.AddRecord = function ( dbid, recordArray, ignoreError )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        for ( var fieldCounter = 0; fieldCounter < recordArray.length; fieldCounter += 2 )
+        {
+            this.addFieldParameter( xmlQDBRequest, recordArray[fieldCounter], recordArray[fieldCounter + 1] );
+        }
+        if ( ignoreError )
+        {
+            this.addParameter( xmlQDBRequest, "ignoreError", "1" );
+        }
+        return this.APIXMLPost( dbid, "API_AddRecord", xmlQDBRequest );
+    }
+
+
+    this.EditRecord = function ( dbid, rid, recordArray )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "rid", rid );
+        for ( var fieldCounter = 0; fieldCounter < recordArray.length; fieldCounter += 2 )
+        {
+            this.addFieldParameter( xmlQDBRequest, recordArray[fieldCounter], recordArray[fieldCounter + 1] );
+        }
+        return this.APIXMLPost( dbid, "API_EditRecord", xmlQDBRequest );
+    }
+
+
+    this.DeleteRecord = function ( dbid, rid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "rid", rid );
+        return this.APIXMLPost( dbid, "API_DeleteRecord", xmlQDBRequest );
+    }
+
+    //force this.query to use passed in query for the query parameter (not qname or qid) when calling API_DoQuery
+    this.DoQueryWithQueryString = function ( dbid, query, clist, slist, options )
+    {
+        return this.query( dbid, query, clist, slist, options, "structured", true );
+    }
+
+    this.DoQuery = function ( dbid, query, clist, slist, options )
+    {
+        return this.query( dbid, query, clist, slist, options, "structured", false );
+    }
+
+    this.DoQueryADO = function ( dbid, query, clist, slist, options )
+    {
+        return this.query( dbid, query, clist, slist, options, "xado", false );
+    }
+
+    this.query = function query( dbid, query, clist, slist, options, fmt, useQueryParam )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "fmt", fmt );
+        this.addParameter( xmlQDBRequest, "includeRids", "1" );
+        if ( useQueryParam )
+        {
+            this.addParameter( xmlQDBRequest, "query", query );
+        }
+        else
+        {
+            if ( query.match( /^\{.*\}$/ ) )
+            {
+                this.addParameter( xmlQDBRequest, "query", query );
+            }
+            else if ( query.match( /^-?[1-9][0-9]*$/ ) )
+            {
+                this.addParameter( xmlQDBRequest, "qid", query );
+            }
+            else
+            {
+                this.addParameter( xmlQDBRequest, "qname", query );
+            }
+        }
+        this.addParameter( xmlQDBRequest, "clist", clist );
+        this.addParameter( xmlQDBRequest, "slist", slist );
+        this.addParameter( xmlQDBRequest, "options", options );
+        return this.APIXMLPost( dbid, "API_DoQuery", xmlQDBRequest );
+    }
+
+    this.PurgeRecords = function ( dbid, query )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "query", query );
+        return this.APIXMLPost( dbid, "API_PurgeRecords", xmlQDBRequest );
+    }
+
+    this.ImportFromCSV = function ( dbid, CSV, clist, rids, skipfirst )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "clist", clist );
+        this.addParameter( xmlQDBRequest, "skipfirst", skipfirst );
+        this.addParameter( xmlQDBRequest, "records_csv", CSV );
+		var xmlQDBResponse = this.APIXMLPost( dbid, "API_ImportFromCSV", xmlQDBRequest );
+        xmlQDBResponse.find("rid")
+            .each(
+                function(i, e)
+                {
+                rids.push($(e).text());
+                }
+            );
+        var result = xmlQDBResponse.find("num_recs_added").text();
+        var numrecords = 0;
+        if ( result )
+            {
+            numrecords += parseInt(result);
+            }
+        result = xmlQDBResponse.find("num_recs_updated").text();
+        if ( result )
+            {
+            numrecords += parseInt(result);
+            }
+        return numrecords;
+    }
+
+    this.ListDBPages = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        return this.APIXMLPost( dbid, "API_ListDBpages", xmlQDBRequest );
+    }
+
+    this.GetDBPage = function ( dbid, page )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        if ( page.match( /^[1-9][0-9]*$/ ) )
+        {
+            this.addParameter( xmlQDBRequest, "pageid", page );
+        }
+        else
+        {
+            this.addParameter( xmlQDBRequest, "pagename", page );
+        }
+        return this.APIXMLPost( dbid, "API_GetDBPage", xmlQDBRequest );
+    }
+
+    this.AddReplaceDBPage = function ( dbid, page, pagetype, pagebody )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        if ( page.match( /^[1-9][0-9]*$/ ) )
+        {
+            this.addParameter( xmlQDBRequest, "pageid", page );
+        }
+        else
+        {
+            this.addParameter( xmlQDBRequest, "pagename", page );
+        }
+        this.addParameter( xmlQDBRequest, "pagetype", pagetype );
+        this.addParameter( xmlQDBRequest, "pagebody", pagebody );
+        return this.APIXMLPost( dbid, "API_AddReplaceDBPage", xmlQDBRequest );
+    }
+
+    /**
+    * AddUserToRole: Add a user to a role in an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param userid The unique identifier of a QuickBase user.
+    * @param roleid The unique identifier of a QuickBase role.
+    * @return boolean
+    */
+    this.AddUserToRole = function ( dbid, userid, roleid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "userid", userid );
+        this.addParameter( xmlQDBRequest, "roleid", roleid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_AddUserToRole", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * ChangeRecordOwner: Change the owner of a record from a QuickBase table.
+    * @param dbid The unique identifier of a QuickBase database.
+    * @param rid String containing the record ID of the record to be deleted. 
+    * @param newowner String containing the screenname or email address of the new record owner. 
+    */
+    this.ChangeRecordOwner = function ( dbid, rid, newowner )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "rid", rid );
+        this.addParameter( xmlQDBRequest, "newowner", newowner );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_ChangeRecordOwner", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * ChangeUserRole: Change the role of a user in a particular application.
+    * @param userid The unique identifier of a QuickBase user.
+    * @param roleid The unique identifier of the user's current QuickBase role.
+    * @param newroleid The unique identifier of the new QuickBase role for the user.
+    */
+    this.ChangeUserRole = function ( dbid, userid, roleid, newroleid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "userid", userid );
+        this.addParameter( xmlQDBRequest, "roleid", roleid );
+        this.addParameter( xmlQDBRequest, "newroleid", newroleid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_ChangeUserRole", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * CreateDatabase: Create a new application.
+    * @param dbname The name of the application to create.
+    * @param dbdesc The description of the application to create.
+    */
+    this.CreateDatabase = function ( dbname, dbdesc )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "dbname", dbname );
+        this.addParameter( xmlQDBRequest, "dbdesc", dbdesc );
+        xmlQDBResponse = this.APIXMLPost( "main", "API_CreateDatabase", xmlQDBRequest );
+        return xmlQDBResponse.find("newdbid").text();
+      
+    }
+
+    /**
+    * CreateTable: Add a table to an existing application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param pnoun The plural noun to use as the name of the table. Records will be referred to as the singular version of this noun.
+    * @return String The unique identifier of the new table.
+    */
+    this.CreateTable = function ( dbid, pnoun )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "pnoun", pnoun );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_CreateTable", xmlQDBRequest );
+        var newdbid = xmlQDBResponse.find("newdbid").text();
+        if ( newdbid == "")
+            {
+            return xmlQDBResponse.find("newDBID").text();
+            }
+        return newdbid;
+    }
+
+    /**
+    * DeleteDatabase: Delete an application. Use carefully!
+    * @param dbid The unique identifier of a QuickBase table.
+    */
+    this.DeleteDatabase = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_DeleteDatabase", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * FindDBByName: Retrieve the database id associated with the database name.
+    * @param dbname the complete name of a QuickBase database.
+    * @return the QuickBase database ID
+    */
+    this.FindDBByName = function ( dbname )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "dbname", dbname );
+        xmlQDBResponse = this.APIXMLPost( "main", "API_FindDBByName", xmlQDBRequest );
+        return xmlQDBResponse.find("dbid").text();
+        
+    }
+
+    /**
+    * GetDBvar: Retrieve the value of an application variable.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param varname The name of the variable to retrieve.
+    * @return String The value of the aplication variable.
+    */
+    this.GetDBvar = function ( dbid, varname )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "varname", varname );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_GetDBvar", xmlQDBRequest );
+        return xmlQDBResponse.find("value").text();
+        
+    }
+
+    /**
+    * GetNumRecords:
+    * @param dbid The unique identifier of a QuickBase table.
+    * @return num_records The number of records in the QuickBase table.
+    */
+    this.GetNumRecords = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_GetNumRecords", xmlQDBRequest );
+        return xmlQDBResponse.find("num_records").text();
+        
+    }
+
+    /**
+    * GenAddRecordForm: Get the HTML for adding a record to a particular table.
+    * @param dbid The unique identifier of a QuickBase table.
+    * @param fieldvalues an Array of field:value strings in the format field:value.
+    * @return String HTML for adding a record.
+    */
+    this.GenAddRecordForm = function ( dbid, fieldvalues )
+    {
+        var action = "API_GenAddRecordForm";
+        for ( var fieldIndex = 0; fieldIndex < fieldvalues.length; fieldIndex++ )
+        {
+            fieldValuePair = fieldvalues[fieldIndex].split( ":" );
+            action = action + "&" + fieldValuePair[0] + "=" + fieldValuePair[1]
+        }
+        return this.GetURL( dbid, action );
+    }
+
+    /**
+    * GenResultsTable: HTML representation of zero or more QuickBase records.
+    * @param dbid The unique identifier of a QuickBase table.
+    * @param query A QuickBase query that selects zero or more records. 
+    * @param clist A period delimited list of field identifiers defining which fields to output. 
+    * @param slist A period delimited list of field identifiers defining which fields to sort on. 
+    * @param options A string indicating ascending vs descending sort order and data output format. 
+    * @return  HTML table of field names across the top and one row for each record.
+    */
+    this.GenResultsTable = function ( dbid, query, clist, slist, jht, jsa, options )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "query", query );
+        this.addParameter( xmlQDBRequest, "clist", clist );
+        this.addParameter( xmlQDBRequest, "slist", slist );
+        this.addParameter( xmlQDBRequest, "options", options );
+        return this.APIXMLPost( dbid, "API_GenResultsTable", xmlQDBRequest, "html");
+    }
+
+    /**
+    * GetOneTimeTicket: Retrieve a ticket valid for the next 5 minutes only. Designed for uploading files.
+    * @return String The ticket.
+    */
+    this.GetOneTimeTicket = function ()
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( "main", "API_GetOneTimeTicket", xmlQDBRequest );
+        return xmlQDBResponse.find("ticket").text();
+        
+    }
+
+    /**
+    * GetRecordAsHTML: Retrieve the HTML of a single database record.
+    * @param dbid The unique identifier of a QuickBase database.
+    * @param rid The unique identifier of a QuickBase record. 
+    * @return Two column HTML table of field names and field values.
+    */
+    this.GetRecordAsHTML = function ( dbid, rid, dfid)
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "rid", rid );
+        if(dfid)
+            {
+            this.addParameter( xmlQDBRequest, "dfid", dfid);
+            }
+        return this.APIXMLPost( dbid, "API_GetRecordAsHTML", xmlQDBRequest, "html");
+    }
+
+    /**
+    * GetRecordInfo: Returns a Xml Document of all the field values of a given record.
+    * @param dbid The unique identifier of a QuickBase table.
+    * @param rid The unique identifier of a QuickBase record.
+    * @return Document The XML document of record information.
+    */
+    this.GetRecordInfo = function ( dbid, rid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "rid", rid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_GetRecordInfo", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * GetRoleInfo: Returns an Xml Document of role information for an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @return Document The XML Document of role information.
+    */
+    this.GetRoleInfo = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_GetRoleInfo", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * GetUserInfo: Returns an Xml Document of information about a user.
+    * @param email The email address of the user.
+    * @return Document The XML Document of user information.
+    */
+    this.GetUserInfo = function ( email )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "email", email );
+        xmlQDBResponse = this.APIXMLPost( "main", "API_GetUserInfo", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * GetUserRole: Returns an Xml Document of role information for a given user and application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param userid The unique identifier of a QuickBase user.
+    * @return Document The XML Document of User Role information for the specified user.
+    */
+    this.GetUserRole = function ( dbid, userid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "userid", userid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_GetUserRole", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * ProvisionUser: Add information about a potential new user to an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param roleid The unique identifier of a QuickBase role.
+    * @param email The new user's email address.
+    * @param fname The new user's first name.
+    * @param lname The new user's last name.
+    * @return String The userid of the new user.
+    */
+    this.ProvisionUser = function ( dbid, roleid, email, fname, lname )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "roleid", roleid );
+        this.addParameter( xmlQDBRequest, "email", email );
+        this.addParameter( xmlQDBRequest, "fname", fname );
+        this.addParameter( xmlQDBRequest, "lname", lname );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_ProvisionUser", xmlQDBRequest );
+        return xmlQDBResponse.find("userid").text();
+        
+    }
+
+    /**
+    * RemoveUserFromRole: Remove a user from a role in an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param userid The unique identifier of a QuickBase user.
+    * @param roleid The unique identifier of a QuickBase role.
+    */
+    this.RemoveUserFromRole = function ( dbid, userid, roleid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "userid", userid );
+        this.addParameter( xmlQDBRequest, "roleid", roleid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_RemoveUserFromRole", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * RenameApp: Change the name of an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param newappname The new name for the application.
+    */
+    this.RenameApp = function ( dbid, newappname )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "newappname", newappname );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_RenameApp", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * SetDBvar: Set the value of an application variable.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param varname The name of the variable to set.
+    * @param value The value to set.
+    */
+    this.SetDBvar = function ( dbid, varname, value )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "varname", varname );
+        this.addParameter( xmlQDBRequest, "value", value );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_SetDBvar", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * SendInvitation: Send an email from QuickBase inviting a user to an application. 
+    * @param dbid The unique identifier of a QuickBase application.
+    * @param userid The unique identifier of a QuickBase user.
+    */
+    this.SendInvitation = function ( dbid, userid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        this.addParameter( xmlQDBRequest, "userid", userid );
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_SendInvitation", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * SignOut: Sign out of QuickBase explicitly. 
+    * Means username and password will be used for the next API call.
+    */
+    this.SignOut = function ()
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( "main", "API_SignOut", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    /**
+    * UserRoles: Returns an Xml Document of information about the roles defined for an application.
+    * @param dbid The unique identifier of a QuickBase application.
+    * @return Document The XML Document of all User Role information.
+    */
+    this.UserRoles = function ( dbid )
+    {
+        var xmlQDBRequest = this.initXMLRequest();
+        xmlQDBResponse = this.APIXMLPost( dbid, "API_UserRoles", xmlQDBRequest );
+        return xmlQDBResponse;
+    }
+
+    var xmlQDBRequest;
+	var multiPartBoundary = "-------B7939B88BEB64DB5448A8EF77C0E9B1EF00F68CCFB";
+    var qdbAPIContentType = "multipart/form-data; boundary=" + multiPartBoundary;
+
+   
+
+    this.initXMLRequest = function ()
+    {
+        xmlQDBRequest = {payload:""};        
+
+        if ( !this.ticket )
+        {
+            if ( this.username )
+            {
+                this.addParameter( xmlQDBRequest, "username", this.username );
+                this.addParameter( xmlQDBRequest, "password", this.password );
+            }
+        }
+        else
+        {
+            this.addParameter( xmlQDBRequest, "ticket", this.ticket );
+        }
+        if ( this.apptoken )
+        {
+            this.addParameter( xmlQDBRequest, "apptoken", this.apptoken );
+        }
+
+        return xmlQDBRequest;
+    }
+
+    this.addParameter = function(xmlQDBRequest, Name, Value)
+        {
+        xmlQDBRequest.payload += "--" + multiPartBoundary + "\r\n" + "Content-Disposition: form-data; name=\"" + Name + "\"\r\n\r\n" + Value + "\r\n";
+        }
+
+    this.addFieldParameter = function ( xmlQDBRequest, fid, Value )
+        {
+        if(typeof(fid) == "string")
+            {
+            xmlQDBRequest.payload += "--" + multiPartBoundary + "\r\n" + "Content-Disposition: form-data; name=\"_fid_" + fid + "\"\r\n\r\n" + Value + "\r\n"; 
+            }
+        else
+            {
+            xmlQDBRequest.payload += "--" + multiPartBoundary + "\r\n" + "Content-Disposition: form-data; name=\"_fid_" + fid + "\"; filename=\""+ fileName +"\"\r\n\r\n" + Value + "\r\n";
+            }
+        }
+
+        this.APIXMLPost = function(dbid, action, xmlQDBRequest, dataType)
+        {
+            var script;
+            if(!dataType)
+                {
+                dataType = "xml";
+                }
+            script = this.qdbServer + "/db/" + dbid + "?act=" + action;
+            var xmlAPI;
+            
+            $.ajax({
+                type: "POST",
+                url:script, 
+                async:false,
+                dataType: dataType,
+				contentType: qdbAPIContentType,
+                data:xmlQDBRequest.payload + "--" + multiPartBoundary + "--",
+                error:function(jqXHR, error, errorThrown)
+                    {
+                    alert(error + " " + errorThrown);
+                    },
+                success:function(xml)
+                    {
+                    xmlAPI = $(xml);
+                    }
+                });
+
+           
+            this.errorcode = xmlAPI.find("errcode").text();
+            
+            this.errortext = xmlAPI.find("errtext").text();
+            
+            this.errordetail = xmlAPI.find("errdetail").text();
+            
+            this.ticket = xmlAPI.find("ticket").text();
+            
+            this.errormessage = "\r\n\r\n" + this.errordetail;
+            return xmlAPI;
+        }
+
+   
+    
+
+    this.displayErrorAlert = function ( message )
+    {
+        if ( this.errorcode != '0' )
+        {
+            alert( message + " " + this.errormessage );
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    
+
+
+
+    this.parseQueryString = function ()
+    {
+        var queryString = window.location.search;
+        queryString = queryString.substring( 1 );
+        var queryNameValuePairs = queryString.split( "&" );
+        var NameValues = new Array();
+        for ( var i = 0; i < queryNameValuePairs.length; i++ )
+        {
+            var queryNameValuePair = queryNameValuePairs[i].split( "=" );
+            NameValues[unescape( queryNameValuePair[0] )] = unescape( queryNameValuePair[1] );
+        }
+        return NameValues;
+    }
+
+    this.ParseDelimited = function ( data, delim )
+    {
+        var output = new Array();
+        var line = new Array();
+        var offset = 0;
+
+        var field = "";
+        var lineEmpty = true;
+        var maxsize = 0;
+        var numfields = 0;
+        var i = new Array();
+        var field = "";
+
+        // Parse lines until the eof is hit
+        while ( GetNextLine() )
+        {
+            if ( !lineEmpty )
+            {
+                output.push( line );
+                numfields = line.length;
+                if ( numfields > maxsize )
+                {
+                    maxsize = numfields;
+                }
+            }
+        }
+
+
+        // If there are any lines which are shorter than the longest
+        // lines, fill them out with "" entries here. This simplifies
+        // checking later.
+        for ( var i = 0; i < output.length; i++ )
+        {
+            while ( output[i].length < maxsize )
+            {
+                output[i].push( "" );
+            }
+        }
+
+        return output;
+
+
+        function GetNextLine()
+        {
+            line = new Array();
+            //skip any empty lines
+            while ( ( offset < data.length ) && ( ( data.substr( offset, 1 ) == "\r" ) || ( data.substr( offset, 1 ) == "\n" ) ) )
+            {
+                offset++;
+            }
+
+            if ( offset >= data.length )
+            {
+                return false;
+            }
+
+            lineEmpty = true;
+            var moreToCome = true;
+            while ( moreToCome )
+            {
+                moreToCome = GetNextField();
+                line.push( field );
+                if ( field )
+                {
+                    lineEmpty = false;
+                }
+            }
+            return true;
+        }
+
+        function GetNextField()
+        {
+            var BEFORE_FIELD = 0;
+            var IN_QUOTED_FIELD = 1;
+            var IN_UNQUOTED_FIELD = 2;
+            var DOUBLE_QUOTE_TEST = 3;
+            var c = "";
+            var state = BEFORE_FIELD;
+            var p = offset;
+            var endofdata = data.length;
+
+
+            field = "";
+
+            while ( true )
+            {
+                if ( p >= endofdata )
+                {
+                    // File, line and field are done
+                    offset = p;
+                    return false;
+                }
+
+                c = data.substr( p, 1 );
+
+                if ( state == DOUBLE_QUOTE_TEST )
+                {
+                    // These checks are ordered by likelihood */
+                    if ( c == delim )
+                    {
+                        // Field is done; delimiter means more to come
+                        offset = p + 1;
+                        return true;
+                    }
+                    else
+                    {
+                        if ( c == "\n" || c == "\r" )
+                        {
+                            // Line and field are done
+                            offset = p + 1;
+                            return false;
+                        }
+                        else
+                        {
+                            if ( c == '"' )
+                            {
+                                // It is doubled, so append one quote
+                                field += '"';
+                                p++;
+                                state = IN_QUOTED_FIELD;
+                            }
+                            else
+                            {
+                                // !!! Shouldn't have anything else after an end quote!
+                                // But do something reasonable to recover: go into unquoted mode
+                                field += c;
+                                p++;
+                                state = IN_UNQUOTED_FIELD;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if ( state == BEFORE_FIELD )
+                    {
+                        // These checks are ordered by likelihood */
+                        if ( c == delim )
+                        {
+                            // Field is blank; delimiter means more to come
+                            offset = p + 1;
+                            return true;
+                        }
+                        else
+                        {
+                            if ( c == '"' )
+                            {
+                                // Found the beginning of a quoted field
+                                p++;
+                                state = IN_QUOTED_FIELD;
+                            }
+                            else
+                            {
+                                if ( c == "\n" || c == "\r" )
+                                {
+                                    // Field is blank and line is done
+                                    offset = p + 1;
+                                    return false;
+                                }
+                                else
+                                {
+                                    if ( c == ' ' )
+                                    {
+                                        // Ignore leading spaces
+                                        p++;
+                                    }
+                                    else
+                                    {
+                                        // Found some other character, beginning an unquoted field
+                                        field += c;
+                                        p++;
+                                        state = IN_UNQUOTED_FIELD;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if ( state == IN_UNQUOTED_FIELD )
+                        {
+                            // These checks are ordered by likelihood */
+                            if ( c == delim )
+                            {
+                                // Field is done; delimiter means more to come
+                                offset = p + 1;
+                                return true;
+                            }
+                            else
+                            {
+                                if ( c == "\n" || c == "\r" )
+                                {
+                                    // Line and field are done
+                                    offset = p + 1;
+                                    return false;
+                                }
+                                else
+                                {
+                                    // Found some other character, add it to the field
+                                    field += c;
+                                    p++;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if ( state == IN_QUOTED_FIELD )
+                            {
+                                if ( c == '"' )
+                                {
+                                    p++;
+                                    state = DOUBLE_QUOTE_TEST;
+                                }
+                                else
+                                {
+                                    // Found some other character, add it to the field
+                                    field += c;
+                                    p++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
